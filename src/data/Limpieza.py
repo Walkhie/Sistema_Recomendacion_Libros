@@ -11,6 +11,7 @@ Ejecuta la limpieza (Sprint 2) sobre el catálogo unificado de OpenAlex.
 import re
 import logging
 import pandas as pd
+import numpy as np
 from difflib import SequenceMatcher
 
 import nltk
@@ -36,7 +37,7 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
 ARCHIVO_ENTRADA = r"data\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.csv"
+ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.xlsx"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -213,7 +214,24 @@ def main() -> None:
     
     log.info("1. Estandarizando las Áreas de Conocimiento...")
     df['Area_Conocimiento'] = df['BISAC Catálogo'].apply(estandarizar_area)
+
+    log.info("1.1 Recalculando prestigio editorial con áreas unificadas...")
     
+    # Borramos los cálculos viejos para no generar conflicto
+    columnas_viejas = ['Titulos_Editorial_Area', 'W_Editorial']
+    df = df.drop(columns=[c for c in columnas_viejas if c in df.columns])
+
+    prestigio = (
+    df.groupby(["Editorial", "Area_Conocimiento"])
+    .size()
+    .reset_index(name="Titulos_Editorial_Area")
+    )
+
+    df = df.merge(prestigio, on=["Editorial", "Area_Conocimiento"], how="left")
+
+    #Fórmula de prestigio editorial: 1 + logaritmo del número de títulos en esa área para esa editorial
+    df["W_Editorial"] = 1 + (0.1 * np.log1p(df["Titulos_Editorial_Area"]))
+
     log.info("2. Purgando falsos positivos de OpenAlex (Zona Gris)...")
     df = df.apply(limpiar_falsos_positivos, axis=1)
     

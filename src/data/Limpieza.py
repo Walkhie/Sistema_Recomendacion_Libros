@@ -36,7 +36,7 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
 ARCHIVO_ENTRADA = r"data\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.xlsx"
+ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -172,19 +172,35 @@ def limpiar_texto_nlp(texto: str) -> str:
     return " ".join(palabras_utiles)
 
 def construir_tag(fila: pd.Series) -> str:
-    """Une toda la metadata en un solo bloque de texto purgado."""
-    # Repetimos el Título_Final dos veces para darle más "peso" en el modelo matemático
+    # Función auxiliar para atrapar nulos antes de convertirlos a texto
+    def texto_seguro(columna):
+        valor = fila.get(columna)
+        return "" if pd.isna(valor) else str(valor).strip()
+
+    # 1. Título doble
+    titulo = texto_seguro('Titulo_Final')
+    titulo_peso = f"{titulo} {titulo}" if titulo else ""
+    
+    # 2. Keywords triple
+    keywords = texto_seguro('Keywords').replace(';', ' ')
+    keywords_peso = f"{keywords} {keywords} {keywords}" if keywords else ""
+    
+    # 3. Editorial doble como Token Único
+    editorial = texto_seguro('Editorial').replace(' ', '') 
+    editorial_peso = f"{editorial} {editorial}" if editorial else ""
+
     elementos = [
-        str(fila.get('Titulo_Final', '')) + " " + str(fila.get('Titulo_Final', '')),
-        str(fila.get('Autor_Final', '')),
-        str(fila.get('Area_Conocimiento', '')),
-        str(fila.get('Keywords', '')).replace(';', ' '),
-        str(fila.get('OpenAlex_Concepts', '')).replace(';', ' '),
-        str(fila.get('Abstract', ''))
+        titulo_peso,
+        texto_seguro('Autor_Final'),
+        editorial_peso,
+        keywords_peso,
+        texto_seguro('Area_Conocimiento'),
+        texto_seguro('OpenAlex_Concepts').replace(';', ' '),
+        texto_seguro('Abstract')
     ]
     
-    # Filtramos nulos y unimos con espacio
-    texto_crudo = " ".join([elem for elem in elementos if elem.strip() and elem != 'nan'])
+    # Unimos solo los elementos que realmente tengan texto (ignorando los vacíos)
+    texto_crudo = " ".join([elem for elem in elementos if elem.strip()])
     return limpiar_texto_nlp(texto_crudo)
 
 # =============================================================================

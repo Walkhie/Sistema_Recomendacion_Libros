@@ -37,7 +37,7 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
 ARCHIVO_ENTRADA = r"data\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.xlsx"
+ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -241,8 +241,30 @@ def main() -> None:
     log.info("4. Construyendo el 'Tag' semántico (NLP)...")
     df['Tag'] = df.apply(construir_tag, axis=1)
     
+    log.info("5. Normalizando pesos (W_Editorial y W_Citas) a escala 0-1...")
+    
+    # Normalizar W_Editorial
+    min_ed = df['W_Editorial'].min()
+    max_ed = df['W_Editorial'].max()
+    if max_ed > min_ed:
+        df['W_Editorial_Norm'] = (df['W_Editorial'] - min_ed) / (max_ed - min_ed)
+    else:
+        df['W_Editorial_Norm'] = 0.0
+
+    # Normalizar W_Citas
+    min_cit = df['W_Citas'].min()
+    max_cit = df['W_Citas'].max()
+    if max_cit > min_cit:
+        df['W_Citas_Norm'] = (df['W_Citas'] - min_cit) / (max_cit - min_cit)
+    else:
+        df['W_Citas_Norm'] = 0.0
+
+    df['W_Editorial_Norm'] = df['W_Editorial_Norm'].round(4)
+    df['W_Citas_Norm'] = df['W_Citas_Norm'].round(4)
+    # -------------------------------
+
     # Opcional: Eliminar columnas crudas que ya no se usarán para aligerar la base final
-    columnas_a_borrar = ['BISAC Catálogo', 'Thema Catálogo', 'Clasificación Dewey', 'Abstract', 'Keywords', 'OpenAlex_Concepts']
+    columnas_a_borrar = ['BISAC Catálogo', 'Thema Catálogo', 'Clasificación Dewey']
     df_final = df.drop(columns=[col for col in columnas_a_borrar if col in df.columns])
     
     log.info(f"Guardando base lista para el modelo en '{ARCHIVO_SALIDA}'...")
@@ -251,4 +273,4 @@ def main() -> None:
     log.info("¡Proceso de limpieza finalizado con éxito!")
 
 if __name__ == "__main__":
-    main()# -*- coding: utf-8 -*-
+    main()

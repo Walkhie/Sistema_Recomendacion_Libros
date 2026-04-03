@@ -2,7 +2,7 @@
 """
 limpieza.py
 ===========
-Ejecuta la limpieza (Sprint 2) sobre el catálogo unificado de OpenAlex.
+Ejecuta la limpieza sobre el catálogo unificado de OpenAlex.
 - Corrige áreas de conocimiento (BISAC).
 - Filtra falsos positivos en la similitud de títulos (Zona Gris).
 - Consolida campos clave y construye el 'Tag' (Corpus NLP) para el recomendador.
@@ -36,8 +36,8 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # =============================================================================
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
-ARCHIVO_ENTRADA = r"data\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\Libros_Limpios_Recomendador.csv"
+ARCHIVO_ENTRADA = r"data\interim\Libros_Unificados_Recomendador.csv"
+ARCHIVO_SALIDA  = r"data\preprocessing\Libros_Limpios_Recomendador.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)

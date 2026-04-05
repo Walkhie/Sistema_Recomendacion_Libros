@@ -6,3 +6,5 @@ ipython
 openpyxl
 pandas
 nltk
+seaborn
+matplotlib

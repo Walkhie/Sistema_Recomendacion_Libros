@@ -18,7 +18,7 @@ vectorizer = TfidfVectorizer(max_features=10000)
 tfidf_matrix = vectorizer.fit_transform(df['Tag'])
 
 def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10, 
-                         peso_texto=0.60, peso_ed=0.30, peso_citas=0.10):
+                         peso_texto=0.75, peso_ed=0.15, peso_citas=0.10):
     """
     Genera recomendaciones híbridas basadas en un libro semilla.
     """
@@ -63,7 +63,7 @@ def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10,
 # ==========================================
 if __name__ == "__main__":
     # Probamos con un libro específico (ajusta el código según tu base de datos)
-    codigo_prueba = 'UBI0064' 
+    codigo_prueba = 'UGU0056' 
     
     libro_info = df[df['Código del libro'] == codigo_prueba].iloc[0]
     print(f"\nLibro Semilla: {libro_info['Titulo_Final']} (Autor: {libro_info['Autor_Final']})")

@@ -4,3 +4,7 @@ requests
 tqdm
 ipython
 openpyxl
+pandas
+nltk
+seaborn
+matplotlib

@@ -37,7 +37,7 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
 ARCHIVO_ENTRADA = r"data\interim\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\preprocessing\Libros_Limpios_Recomendador.csv"
+ARCHIVO_SALIDA  = r"data\preprocessing\Libros_Limpios_Recomendador.xlsx"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -46,21 +46,69 @@ log = logging.getLogger(__name__)
 # DICCIONARIOS
 # =============================================================================
 DICCIONARIO_BISAC = {
-    'POL': 'Ciencias Políticas', 'POE': 'Poesía', 'PHI': 'Filosofía',
-    'PSY': 'Psicología', 'HIS': 'Historia', 'EDU': 'Educación',
-    'REL': 'Religión', 'LAW': 'Derecho', 'BUS': 'Negocios y Economía',
-    'ART': 'Arte', 'LIT': 'Literatura', 'SOC': 'Ciencias Sociales',
-    'MED': 'Medicina', 'TEC': 'Tecnología', 'SCI': 'Ciencia',
-    'TRA': 'Viajes y Transporte', 'NAT': 'Naturaleza', 'SPO': 'Deportes',
-    'MUS': 'Música', 'YAN': 'No Ficción Juvenil'
+    'ANT': 'Antigüedades y Coleccionables',
+    'ARC': 'Arquitectura',
+    'ART': 'Arte',
+    'BIB': 'Religión',
+    'BIO': 'Biografías',
+    'BUS': 'Negocios y Economía',
+    'COM': 'Tecnología y Computación',
+    'DES': 'Diseño',
+    'EDU': 'Educación',
+    'FAM': 'Familia y Relaciones',
+    'FIC': 'Ficción',
+    'FOR': 'Estudio de Idiomas',
+    'GAM': 'Juegos y Actividades',
+    'GAR': 'Jardinería',
+    'HEA': 'Salud y Medicina',
+    'HIS': 'Historia',
+    'JNF': 'No Ficción Juvenil',
+    'JUV': 'Ficción Juvenil',
+    'LAW': 'Derecho',
+    'LCO': 'Literatura',
+    'LIT': 'Literatura',
+    'MAT': 'Matemáticas',
+    'MED': 'Medicina',
+    'MUS': 'Música',
+    'NAT': 'Naturaleza',
+    'PER': 'Artes Escénicas',
+    'PHI': 'Filosofía',
+    'PHO': 'Fotografía',
+    'POE': 'Poesía',
+    'POL': 'Ciencias Políticas',
+    'PSY': 'Psicología',
+    'REF': 'Investigación y Referencia',
+    'REL': 'Religión',
+    'SCI': 'Ciencia',
+    'SOC': 'Ciencias Sociales',
+    'SPO': 'Deportes',
+    'STU': 'Educación',
+    'TEC': 'Tecnología e Ingeniería',
+    'TRA': 'Viajes y Transporte',
+    'TRU': 'Crimen Real',
+    'TRV': 'Viajes y Transporte',
+    'YAF': 'Ficción Juvenil',
+    'YAN': 'No Ficción Juvenil'
 }
 
 TRADUCCIONES_DIRECTAS = {
-    'LEY': 'Derecho', 'LAW': 'Derecho', 'HISTORY': 'Historia',
-    'BUSINESS': 'Negocios y Economía', 'EDUCATION': 'Educación',
-    'RELIGION': 'Religión', 'NATURE': 'Naturaleza', 'MEDICAL': 'Medicina',
-    'TECHNOLOGY': 'Tecnología', 'ENGINEERING': 'Ingeniería',
-    'PHILOSOPHY': 'Filosofía', 'MUSIC': 'Música'
+    'LEY': 'Derecho', 
+    'LAW': 'Derecho', 
+    'ARQUITECTURA': 'Arquitectura', 
+    'ART': 'Arte',
+    'ARTE': 'Arte',
+    'HISTORY': 'Historia',
+    'BUSINESS': 'Negocios y Economía', 
+    'EDUCATION': 'Educación',
+    'RELIGION': 'Religión', 
+    'NATURE': 'Naturaleza', 
+    'MEDICAL': 'Medicina', 
+    'SALUD Y ESTADO FISICO': 'Salud y Medicina',
+    'AUTO-AYUDA': 'Psicología',
+    'TECHNOLOGY': 'Tecnología y Computación', 
+    'ENGINEERING': 'Tecnología e Ingeniería',
+    'PHILOSOPHY': 'Filosofía', 
+    'MUSIC': 'Música'
 }
 
 # =============================================================================
@@ -70,10 +118,22 @@ TRADUCCIONES_DIRECTAS = {
 def estandarizar_area(valor: str) -> str:
     if pd.isna(valor): return 'General'
     valor_str = str(valor).upper().strip()
-    match = re.search(r'([A-Z]{3})\d{2,}', valor_str)
-    if match: return DICCIONARIO_BISAC.get(match.group(1), 'General')
+    
+    # 1. Búsqueda estricta con números (ej. COM001000)
+    match = re.search(r'([A-Z]{3})\d{3,}', valor_str)
+    if match and match.group(1) in DICCIONARIO_BISAC:
+        return DICCIONARIO_BISAC[match.group(1)]
+        
+    # 2. NUEVO: Búsqueda por prefijo de 3 letras sin números (ej. "MAT MATEMÁTICAS")
+    prefijo = valor_str[:3]
+    if prefijo in DICCIONARIO_BISAC:
+        return DICCIONARIO_BISAC[prefijo]
+        
+    # 3. Búsqueda por palabras clave directas
     for clave, traduccion in TRADUCCIONES_DIRECTAS.items():
         if clave in valor_str: return traduccion
+        
+    # 4. Limpieza final de salvavidas
     texto_limpio = re.sub(r'[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]', '', valor_str).strip()
     return texto_limpio.capitalize() if texto_limpio else 'General'
 

@@ -8,3 +8,4 @@ pandas
 nltk
 seaborn
 matplotlib
+tabulate

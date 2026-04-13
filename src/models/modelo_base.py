@@ -6,6 +6,8 @@ Incluye una lógica de relleno progresivo (backfilling) para garantizar que siem
 
 """
 
+import time
+from tabulate import tabulate
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -137,31 +139,78 @@ def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10,
     return recomendaciones.head(top_n)[columnas_retorno]
 
 # ==========================================
+# FUNCIÓN DE EVALUACIÓN MASIVA
+# ==========================================
+def evaluar_cascada_automatica(dataframe, matriz_tfidf, n_muestras=100):
+    print(f"\nIniciando evaluación automática con {n_muestras} libros aleatorios...")
+    inicio = time.time()
+    
+    # 1. Seleccionar libros al azar (random_state=42 garantiza reproducibilidad)
+    muestra_codigos = dataframe.sample(n=n_muestras, random_state=42)['Código del libro'].tolist()
+    
+    # 2. Diccionario para llevar la cuenta de la activación de cada nivel
+    conteo_niveles = {
+        'Nivel 1 (Texto)': 0,
+        'Nivel 2 (Keywords)': 0,
+        'Nivel 3 (Área)': 0,
+        'Nivel 4 (Salvavidas)': 0
+    }
+    
+    total_recomendaciones = 0
+    
+    # 3. Iterar sobre la muestra
+    for codigo in muestra_codigos:
+        resultados = recomendar_por_libro(codigo, dataframe, matriz_tfidf)
+        if isinstance(resultados, str): continue # Ignorar errores
+            
+        conteos_locales = resultados['Nivel'].value_counts().to_dict()
+        for nivel, cantidad in conteos_locales.items():
+            if nivel in conteo_niveles:
+                conteo_niveles[nivel] += cantidad
+                
+        total_recomendaciones += len(resultados)
+        
+    tiempo_total = time.time() - inicio
+    
+    # 4. Calcular porcentajes y formatear la salida
+    print(f"Evaluación finalizada en {tiempo_total:.2f} segundos.")
+    print(f"Total de libros semilla evaluados: {len(muestra_codigos)}")
+    print(f"Total de recomendaciones generadas: {total_recomendaciones}\n")
+    
+    tabla_resultados = []
+    for nivel in ['Nivel 1 (Texto)', 'Nivel 2 (Keywords)', 'Nivel 3 (Área)', 'Nivel 4 (Salvavidas)']:
+        cantidad = conteo_niveles[nivel]
+        porcentaje = (cantidad / total_recomendaciones) * 100 if total_recomendaciones > 0 else 0
+        tabla_resultados.append([nivel, cantidad, f"{porcentaje:.2f}%"])
+        
+    print("RESUMEN DE TASA DE ACTIVACIÓN DE LA CASCADA:")
+    print(tabulate(tabla_resultados, headers=['Nivel de Activación', 'Recomendaciones Entregadas', 'Porcentaje (%)'], tablefmt='fancy_grid'))
+    
+    return conteo_niveles
+
+# ==========================================
 # ÁREA DE PRUEBAS
 # ==========================================
 if __name__ == "__main__":
-    # Probamos con un libro específico
-    codigo_prueba = 'UJT0179' 
     
+    # PRUEBA 1: EVALUACIÓN MASIVA (100 Libros)
+    # ---------------------------------------------------------
+    resultados_evaluacion = evaluar_cascada_automatica(df, tfidf_matrix, n_muestras=100)
+    
+    # PRUEBA 2: PRUEBA INDIVIDUAL (Comentada temporalmente)
+    # ---------------------------------------------------------
+    """
+    codigo_prueba = 'UJT0179' 
     libro_info = df[df['Código del libro'] == codigo_prueba].iloc[0]
     print(f"\nLibro Semilla: {libro_info['Titulo_Final']} (Autor: {libro_info['Autor_Final']})")
     print("-" * 100)
-    
-    # Llamamos a la función
     top_10 = recomendar_por_libro(codigo_prueba, df, tfidf_matrix)
-    
-    # 1. Seleccionamos las columnas
     columnas_ver = ['Código del libro', 'Titulo_Final', 'Nivel', 'Similitud_Texto', 'W_Editorial_Norm','W_Citas_Norm', 'Score_Final']
     df_imprimir = top_10[columnas_ver].copy()
-    
-    # 2. El truco: Acortar el título a 45 caracteres y redondear los números a 3 decimales
     df_imprimir['Titulo_Final'] = df_imprimir['Titulo_Final'].apply(lambda x: x[:45] + '...' if len(str(x)) > 45 else x)
     df_imprimir['Similitud_Texto'] = df_imprimir['Similitud_Texto'].round(3)
     df_imprimir['Score_Final'] = df_imprimir['Score_Final'].round(3)
-    
-    # 3. Configurar Pandas para que imprima todo en una sola línea ancha
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', 200)
-    
-    # 4. Imprimir justificando a la izquierda
     print(df_imprimir.to_string(index=False, justify='right'))
+    """

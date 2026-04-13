@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-limpieza.py
+data_preprocessing.py
 ===========
 Ejecuta la limpieza sobre el catálogo unificado de OpenAlex.
 - Corrige áreas de conocimiento (BISAC).
@@ -37,7 +37,7 @@ STOPWORDS_COMBINADAS = stop_words_es | stop_words_en | stop_words_fr | stop_word
 # CONFIGURACIÓN GLOBAL
 # =============================================================================
 ARCHIVO_ENTRADA = r"data\interim\Libros_Unificados_Recomendador.csv"
-ARCHIVO_SALIDA  = r"data\preprocessing\Libros_Limpios_Recomendador.xlsx"
+ARCHIVO_SALIDA = r"data\preprocessing\Libros_Limpios_Recomendador.csv"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -272,6 +272,24 @@ def main() -> None:
     log.info(f"Cargando datos desde '{ARCHIVO_ENTRADA}'...")
     df = pd.read_csv(ARCHIVO_ENTRADA)
     
+    # ==========================================
+    # NUEVO PASO 0: FILTRO DE IDIOMA (MVP)
+    # ==========================================
+    log.info("0. Imputando nulos y filtrando el catálogo exclusivo en Español...")
+    
+    # Imputar nulos: Por probabilidad (95%), un libro sin idioma asume la Moda (Español)
+    df['Idioma'] = df['Idioma'].fillna('Español')
+    
+    # Estandarizar texto (quita espacios extra y pone la primera en mayúscula)
+    # Esto evita que 'español', ' Español ', o 'ESPAÑOL' se queden por fuera
+    df['Idioma'] = df['Idioma'].astype(str).str.strip().str.capitalize()
+    
+    # Filtrar estrictamente la base de datos
+    df = df[df['Idioma'] == 'Español'].copy()
+    
+    log.info(f"-> Catálogo filtrado con éxito. Total de libros para el MVP: {len(df)}")
+    # ==========================================
+
     log.info("1. Estandarizando las Áreas de Conocimiento...")
     df['Area_Conocimiento'] = df['BISAC Catálogo'].apply(estandarizar_area)
 

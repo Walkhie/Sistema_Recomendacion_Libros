@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+modelo_base.py
+Implementa el modelo de recomendación híbrido basado en similitud de texto (TF-IDF) y factores de prestigio (editorial y citas).
+Incluye una lógica de relleno progresivo (backfilling) para garantizar que siempre se devuelvan 10 recomendaciones.
+
+"""
+
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -20,7 +28,8 @@ tfidf_matrix = vectorizer.fit_transform(df['Tag'])
 def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10, 
                          peso_texto=0.75, peso_ed=0.15, peso_citas=0.10):
     """
-    Genera recomendaciones híbridas basadas en un libro semilla.
+    Genera recomendaciones híbridas basadas en un libro semilla,
+    etiquetando el nivel de la cascada del cual proviene cada recomendación.
     """
     # Verificar que el libro exista en la base de datos
     if codigo_semilla not in dataframe['Código del libro'].values:
@@ -46,8 +55,13 @@ def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10,
         (resultados['W_Citas_Norm'] * peso_citas)
     )
 
+    # ==========================================
     # NIVEL 1: Similitud estricta
-    resultados_n1 = resultados[resultados['Similitud_Texto'] >= 0.17]
+    # ==========================================
+    # Usamos .copy() para evitar advertencias al agregar la nueva columna
+    resultados_n1 = resultados[resultados['Similitud_Texto'] >= 0.17].copy()
+    resultados_n1['Nivel'] = 'Nivel 1 (Texto)' # <--- NUEVA ETIQUETA
+    
     recomendaciones = resultados_n1[resultados_n1['Código del libro'] != codigo_semilla].sort_values(by='Score_Final', ascending=False).head(top_n)
     
     # Lista de IDs recomendados para no repetir libros en los siguientes niveles
@@ -74,7 +88,9 @@ def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10,
     kws_semilla = str(dataframe.loc[idx, 'Keywords']).lower()
     area_semilla = dataframe.loc[idx, 'Area_Conocimiento']
     
+    # ==========================================
     # NIVEL 2: Keywords
+    # ==========================================
     if len(recomendaciones) < top_n and kws_semilla != 'nan' and kws_semilla.strip():
         lista_kws = [k.strip() for k in kws_semilla.replace(';', ',').split(',') if len(k.strip()) > 3]
         
@@ -90,41 +106,62 @@ def recomendar_por_libro(codigo_semilla, dataframe, matriz_tfidf, top_n=10,
         if not df_kws.empty:
             df_kws['Score_Final'] = (df_kws['W_Editorial_Norm'] * 0.6) + (df_kws['W_Citas_Norm'] * 0.4)
             df_kws['Similitud_Texto'] = 0.0 # Flag visual de que es relleno
+            df_kws['Nivel'] = 'Nivel 2 (Keywords)' # <--- NUEVA ETIQUETA
             df_kws = df_kws.sort_values(by=['Kw_Match', 'Score_Final'], ascending=[False, False])
             recomendaciones = agregar_faltantes(recomendaciones, df_kws)
 
-    # NIVEL 3: Área de Conocimiento (Excluyendo 'General')
+    # ==========================================
+    # NIVEL 3: Área de Conocimiento
+    # ==========================================
     if len(recomendaciones) < top_n and area_semilla != 'General':
         df_area = dataframe[dataframe['Area_Conocimiento'] == area_semilla].copy()
         df_area['Score_Final'] = (df_area['W_Editorial_Norm'] * 0.6) + (df_area['W_Citas_Norm'] * 0.4)
         df_area['Similitud_Texto'] = 0.0
+        df_area['Nivel'] = 'Nivel 3 (Área)' # <--- NUEVA ETIQUETA
         df_area = df_area.sort_values(by='Score_Final', ascending=False)
         recomendaciones = agregar_faltantes(recomendaciones, df_area)
 
-    # NIVEL 4: Top Prestigio Global (El Salvavidas)
+    # ==========================================
+    # NIVEL 4: Top Prestigio Global (Salvavidas)
+    # ==========================================
     if len(recomendaciones) < top_n:
         df_global = dataframe.copy()
         df_global['Score_Final'] = (df_global['W_Editorial_Norm'] * 0.6) + (df_global['W_Citas_Norm'] * 0.4)
         df_global['Similitud_Texto'] = 0.0
+        df_global['Nivel'] = 'Nivel 4 (Salvavidas)' # <--- NUEVA ETIQUETA
         df_global = df_global.sort_values(by='Score_Final', ascending=False)
         recomendaciones = agregar_faltantes(recomendaciones, df_global)
 
-    columnas_retorno = ['Código del libro', 'Titulo_Final', 'Similitud_Texto', 'W_Editorial_Norm', 'W_Citas_Norm', 'Score_Final']
+    # Retornamos el DataFrame incluyendo la nueva columna 'Nivel'
+    columnas_retorno = ['Código del libro', 'Titulo_Final', 'Nivel', 'Similitud_Texto', 'W_Editorial_Norm', 'W_Citas_Norm', 'Score_Final']
     return recomendaciones.head(top_n)[columnas_retorno]
 
 # ==========================================
 # ÁREA DE PRUEBAS
 # ==========================================
 if __name__ == "__main__":
-    # Probamos con un libro específico (ajusta el código según tu base de datos)
-    codigo_prueba = 'CEJ0114' 
+    # Probamos con un libro específico
+    codigo_prueba = 'UJT0179' 
     
     libro_info = df[df['Código del libro'] == codigo_prueba].iloc[0]
     print(f"\nLibro Semilla: {libro_info['Titulo_Final']} (Autor: {libro_info['Autor_Final']})")
-    print("-" * 60)
+    print("-" * 100)
     
     # Llamamos a la función
     top_10 = recomendar_por_libro(codigo_prueba, df, tfidf_matrix)
     
-    # Mostramos los resultados en la terminal
-    print(top_10[['Código del libro', 'Titulo_Final', 'Similitud_Texto', 'W_Editorial_Norm','W_Citas_Norm', 'Score_Final']])
+    # 1. Seleccionamos las columnas
+    columnas_ver = ['Código del libro', 'Titulo_Final', 'Nivel', 'Similitud_Texto', 'W_Editorial_Norm','W_Citas_Norm', 'Score_Final']
+    df_imprimir = top_10[columnas_ver].copy()
+    
+    # 2. El truco: Acortar el título a 45 caracteres y redondear los números a 3 decimales
+    df_imprimir['Titulo_Final'] = df_imprimir['Titulo_Final'].apply(lambda x: x[:45] + '...' if len(str(x)) > 45 else x)
+    df_imprimir['Similitud_Texto'] = df_imprimir['Similitud_Texto'].round(3)
+    df_imprimir['Score_Final'] = df_imprimir['Score_Final'].round(3)
+    
+    # 3. Configurar Pandas para que imprima todo en una sola línea ancha
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', 200)
+    
+    # 4. Imprimir justificando a la izquierda
+    print(df_imprimir.to_string(index=False, justify='right'))

@@ -6,8 +6,22 @@ catalog_service = CatalogService()
 
 
 @router.get("")
-def get_books(query: str = ""):
-    return catalog_service.get_all(query=query)
+def get_books(
+    query: str = "",
+    title: str = "",
+    author: str = "",
+    category: str = "",
+    min_citations: int | None = None,
+    min_editorial_count: int | None = None,
+):
+    return catalog_service.get_all(
+        query=query,
+        title=title,
+        author=author,
+        category=category,
+        min_citations=min_citations,
+        min_editorial_count=min_editorial_count,
+    )
 
 
 @router.get("/{book_id}")

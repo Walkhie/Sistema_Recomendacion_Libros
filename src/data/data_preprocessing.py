@@ -169,8 +169,14 @@ def limpiar_falsos_positivos(fila: pd.Series) -> pd.Series:
 def limpiar_titulo_biblioteca(titulo):
     if pd.isna(titulo): return ""
     t = str(titulo).strip()
-    t = re.sub(r'\(.*?\)', '', t)
+    
+    # 1. Corregir casos como "(in)visibles" -> "invisibles" o "(des)acuerdos" -> "desacuerdos"
+    t = re.sub(r'\((in|des)\)', r'\1', t, flags=re.IGNORECASE)
+    
+    # 2. Corregir el orden de los artículos (Ej: "Guerra, La" -> "La Guerra")
     t = re.sub(r'(.*),\s*(LA|EL|LOS|LAS|UN|UNA|UNOS|UNAS)$', r'\2 \1', t, flags=re.IGNORECASE)
+    
+    # Hemos eliminado la regla que borraba todos los paréntesis para conservar (Vol. I), (1958-2019), etc.
     return re.sub(r'\s+', ' ', t).strip()
 
 def limpiar_autor_biblioteca(autor: str) -> str:
@@ -273,21 +279,75 @@ def main() -> None:
     df = pd.read_csv(ARCHIVO_ENTRADA)
     
     # ==========================================
-    # NUEVO PASO 0: FILTRO DE IDIOMA (MVP)
+    # NUEVO PASO 0: FILTRO DE IDIOMA ESTRICTO POR NLP
     # ==========================================
-    log.info("0. Imputando nulos y filtrando el catálogo exclusivo en Español...")
+    log.info("0. Detectando idiomas mediante conteo léxico y filtrando el catálogo...")
     
-    # Imputar nulos: Por probabilidad (95%), un libro sin idioma asume la Moda (Español)
-    df['Idioma'] = df['Idioma'].fillna('Español')
+    def inferir_idioma_robusto(fila):
+        # 1. Función para limpiar y extraer palabras sin caer en trampas
+        def extraer_palabras(texto):
+            # Limpiar casos comunes que generan falsas stopwords (ej: /as, /os)
+            texto_limpio = re.sub(r'/as\b|/os\b', '', str(texto).lower())
+            palabras_crudas = re.findall(r'\b\w+\b', texto_limpio)
+            # Retornar palabras filtrando números y letras solas (excepto conectores válidos)
+            return [p for p in palabras_crudas if not p.isnumeric() and (len(p) > 1 or p in ['y', 'a', 'e', 'o', 'u'])]
+
+        # 2. Extraer palabras por zonas
+        palabras_titulo = extraer_palabras(str(fila.get('Titulo', '')) + " " + str(fila.get('Keywords', '')))
+        palabras_abstract = extraer_palabras(str(fila.get('Abstract', '')))
+        
+        # 3. Diccionarios de puntuación
+        puntajes = {'Español': 0, 'Inglés': 0, 'Portugués': 0, 'Francés': 0}
+        
+        # PESO A: El Título y Keywords son la identidad del libro (Valen 10 puntos cada palabra)
+        for p in palabras_titulo:
+            if p in stop_words_es: puntajes['Español'] += 10
+            if p in stop_words_en: puntajes['Inglés'] += 10
+            if p in stop_words_pt: puntajes['Portugués'] += 10
+            if p in stop_words_fr: puntajes['Francés'] += 10
+            
+        # PESO B: El Abstract es solo contexto (Vale 1 punto cada palabra)
+        # Esto permite que un Abstract en español salve un título corto como "Apuntes dos", 
+        # pero evita que un Abstract 100% en inglés le gane a un título claramente en español.
+        for p in palabras_abstract:
+            if p in stop_words_es: puntajes['Español'] += 1
+            if p in stop_words_en: puntajes['Inglés'] += 1
+            if p in stop_words_pt: puntajes['Portugués'] += 1
+            if p in stop_words_fr: puntajes['Francés'] += 1
+            
+        idioma_ganador = max(puntajes, key=puntajes.get)
+        
+        # 4. Si TODO está en 0, usamos el catálogo original o Español por defecto
+        if puntajes[idioma_ganador] == 0:
+            idioma_orig = str(fila.get('Idioma')).strip().capitalize()
+            if idioma_orig in ['Español', 'Inglés', 'Portugués', 'Francés']:
+                return idioma_orig
+            return 'Español'
+            
+        # 5. En caso de empate de puntajes (ej. Español 20, Portugués 20),
+        # siempre priorizamos el Español por ser el idioma dominante de tu universidad.
+        max_puntaje = puntajes[idioma_ganador]
+        if puntajes['Español'] == max_puntaje:
+            return 'Español'
+            
+        return idioma_ganador
+
+    # APLICAR DIRECTAMENTE A LA COLUMNA 'Idioma' (Esto elimina los nulos reales)
+    df['Idioma'] = df.apply(inferir_idioma_robusto, axis=1)
     
-    # Estandarizar texto (quita espacios extra y pone la primera en mayúscula)
-    # Esto evita que 'español', ' Español ', o 'ESPAÑOL' se queden por fuera
-    df['Idioma'] = df['Idioma'].astype(str).str.strip().str.capitalize()
-    
-    # Filtrar estrictamente la base de datos
+    # ==========================================
+    # GUARDAR LOS EXCLUIDOS PARA REVISIÓN MANUAL
+    # ==========================================
+    df_excluidos = df[df['Idioma'] != 'Español'].copy()
+    ruta_excluidos = r"data\preprocessing\Libros_Excluidos_Idioma.csv"
+    df_excluidos.to_csv(ruta_excluidos, index=False, encoding="utf-8-sig")
+    log.info(f"-> Archivo de revisión manual generado. Total excluidos: {len(df_excluidos)}")
+    # ==========================================
+
+    # Filtrar estrictamente la base de datos (Conservamos solo Español)
     df = df[df['Idioma'] == 'Español'].copy()
     
-    log.info(f"-> Catálogo filtrado con éxito. Total de libros para el MVP: {len(df)}")
+    log.info(f"-> Catálogo filtrado con éxito. Total de libros en Español: {len(df)}")
     # ==========================================
 
     log.info("1. Estandarizando las Áreas de Conocimiento...")

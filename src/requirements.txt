@@ -9,3 +9,7 @@ nltk
 seaborn
 matplotlib
 tabulate
+sentence-transformers
+torch
+scikit-learn
+tabulate

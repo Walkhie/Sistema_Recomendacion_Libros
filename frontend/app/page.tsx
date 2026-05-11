@@ -2,16 +2,23 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import BookCard from "./components/BookCard";
 import BookDetailModal from "./components/BookDetailModal";
 import SearchBar from "./components/SearchBar";
 import type { Book } from "./types/book";
 
+import { useAuth } from "@/context/AuthContext";
+import {
+  getUserFavorites,
+  removeFavorite,
+  saveFavorite,
+  type FavoriteBook,
+} from "@/lib/userStore";
+
 const API_BASE_URL = "http://127.0.0.1:8000";
-const DEFAULT_SEED_BOOK_ID = "UCO0088";
-const DEFAULT_SEED_BOOK_TITLE = "Química general prácticas de laboratorio";
-const DEFAULT_TOP_N = 6;
+const RECOMMENDATIONS_PER_FAVORITE = 6;
 
 interface RecommendationItem {
   "Código del libro": string;
@@ -39,8 +46,64 @@ interface LoadBooksParams {
   min_editorial_count?: number;
 }
 
+type RecommendationGroup = {
+  seedBook: Book;
+  recommendations: Book[];
+};
+
+function favoriteToBook(favorite: FavoriteBook): Book {
+  return {
+    id: favorite.bookId,
+    title: favorite.title,
+    edition: favorite.edition ?? favorite.year ?? "",
+    category: favorite.category ?? "",
+    authors: favorite.authors ?? "",
+    citations: favorite.citations ?? 0,
+    editorialCount: favorite.editorialCount ?? 0,
+    editorialArea: favorite.editorialArea ?? "",
+    year: favorite.year ?? favorite.edition ?? "",
+    editorial: favorite.editorial ?? favorite.editorialArea ?? "",
+    doi: favorite.doi ?? "",
+    abstract: favorite.abstract ?? "",
+    keywords: favorite.keywords ?? "",
+    language: favorite.language ?? "",
+    institution: favorite.institution ?? "",
+    matchMethod: "",
+    openAlexId: "",
+    editorialScore: 0,
+    citationScore: 0,
+  };
+}
+
+function bookToFavoritePayload(book: Book) {
+  return {
+    id: book.id,
+    title: book.title,
+    edition: book.edition,
+    authors: book.authors,
+    category: book.category,
+    year: book.year || book.edition,
+    citations: book.citations,
+    editorialCount: book.editorialCount,
+    editorialArea: book.editorialArea,
+    editorial: book.editorial,
+    doi: book.doi,
+    abstract: book.abstract,
+    keywords: book.keywords,
+    language: book.language,
+    institution: book.institution,
+  };
+}
+
 export default function HomePage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
   const [books, setBooks] = useState<Book[]>([]);
+  const [recommendationGroups, setRecommendationGroups] = useState<
+    RecommendationGroup[]
+  >([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -48,8 +111,7 @@ export default function HomePage() {
 
   const [searchInput, setSearchInput] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
-  const [showingDefaultRecommendations, setShowingDefaultRecommendations] =
-    useState(true);
+  const [searchMode, setSearchMode] = useState(false);
 
   const [titleFilter, setTitleFilter] = useState("");
   const [authorFilter, setAuthorFilter] = useState("");
@@ -75,19 +137,18 @@ export default function HomePage() {
     return response.json();
   };
 
-  const loadRecommendedBooks = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      setAppliedQuery("");
-      setShowingDefaultRecommendations(true);
+  const loadRecommendationsForFavorite = async (
+    favorite: FavoriteBook
+  ): Promise<RecommendationGroup> => {
+    const seedBook = favoriteToBook(favorite);
 
+    try {
       const response = await fetch(
-        `${API_BASE_URL}/books/${DEFAULT_SEED_BOOK_ID}/recommendations?top_n=${DEFAULT_TOP_N}`
+        `${API_BASE_URL}/books/${favorite.bookId}/recommendations?top_n=${RECOMMENDATIONS_PER_FAVORITE}`
       );
 
       if (!response.ok) {
-        throw new Error("No se pudieron obtener las recomendaciones");
+        throw new Error(`No se pudieron cargar recomendaciones para ${seedBook.title}`);
       }
 
       const data: RecommendationResponse = await response.json();
@@ -96,14 +157,68 @@ export default function HomePage() {
         (item) => item["Código del libro"]
       );
 
-      const recommendedBooks = await Promise.all(
+      const recommendations = await Promise.all(
         recommendedIds.map((bookId) => fetchBookById(bookId))
       );
 
-      setBooks(recommendedBooks);
+      return {
+        seedBook,
+        recommendations,
+      };
     } catch (err) {
       console.error(err);
-      setError("Ocurrió un error al cargar las recomendaciones");
+
+      return {
+        seedBook,
+        recommendations: [],
+      };
+    }
+  };
+
+  const loadPersonalizedRecommendations = async () => {
+    if (authLoading) return;
+
+    try {
+      setLoading(true);
+      setError("");
+      setBooks([]);
+      setRecommendationGroups([]);
+      setSearchMode(false);
+      setAppliedQuery("");
+
+      if (!user) {
+        setFavoriteBooks({});
+        setRecommendationGroups([]);
+        return;
+      }
+
+      const favorites = await getUserFavorites(user.uid);
+
+      const favoriteMap = favorites.reduce<Record<string, boolean>>(
+        (acc, favorite) => {
+          acc[favorite.bookId] = true;
+          return acc;
+        },
+        {}
+      );
+
+      setFavoriteBooks(favoriteMap);
+
+      if (favorites.length === 0) {
+        setRecommendationGroups([]);
+        return;
+      }
+
+      const groups = await Promise.all(
+        favorites.map((favorite) => loadRecommendationsForFavorite(favorite))
+      );
+
+      setRecommendationGroups(
+        groups.filter((group) => group.recommendations.length > 0)
+      );
+    } catch (err) {
+      console.error(err);
+      setError("Ocurrió un error al cargar tus recomendaciones.");
     } finally {
       setLoading(false);
     }
@@ -113,7 +228,8 @@ export default function HomePage() {
     try {
       setLoading(true);
       setError("");
-      setShowingDefaultRecommendations(false);
+      setSearchMode(true);
+      setRecommendationGroups([]);
 
       const searchParams = new URLSearchParams();
 
@@ -126,10 +242,7 @@ export default function HomePage() {
         searchParams.set("min_citations", String(params.min_citations));
       }
 
-      if (
-        params?.min_editorial_count &&
-        params.min_editorial_count > 0
-      ) {
+      if (params?.min_editorial_count && params.min_editorial_count > 0) {
         searchParams.set(
           "min_editorial_count",
           String(params.min_editorial_count)
@@ -157,8 +270,9 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    loadRecommendedBooks();
-  }, []);
+    loadPersonalizedRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -172,11 +286,47 @@ export default function HomePage() {
     };
   }, [selectedBook]);
 
-  const toggleFavorite = (bookId: string) => {
-    setFavoriteBooks((prev) => ({
-      ...prev,
-      [bookId]: !prev[bookId],
-    }));
+  const toggleFavorite = async (book: Book) => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const wasFavorite = Boolean(favoriteBooks[book.id]);
+
+    setFavoriteBooks((prev) => {
+      const next = { ...prev };
+
+      if (wasFavorite) {
+        delete next[book.id];
+      } else {
+        next[book.id] = true;
+      }
+
+      return next;
+    });
+
+    try {
+      if (wasFavorite) {
+        await removeFavorite(user.uid, book.id);
+      } else {
+        await saveFavorite(user.uid, bookToFavoritePayload(book));
+      }
+    } catch (err) {
+      console.error(err);
+
+      setFavoriteBooks((prev) => {
+        const next = { ...prev };
+
+        if (wasFavorite) {
+          next[book.id] = true;
+        } else {
+          delete next[book.id];
+        }
+
+        return next;
+      });
+    }
   };
 
   const toggleLikedRecommendation = (bookId: string) => {
@@ -201,6 +351,8 @@ export default function HomePage() {
       min_citations: minCitations,
       min_editorial_count: minEditorialCount,
     });
+
+    setFiltersOpen(false);
   };
 
   const handleClearFilters = async () => {
@@ -214,7 +366,7 @@ export default function HomePage() {
     setFiltersOpen(false);
     setSelectedBook(null);
 
-    await loadRecommendedBooks();
+    await loadPersonalizedRecommendations();
   };
 
   return (
@@ -244,38 +396,84 @@ export default function HomePage() {
           <h1>Página Principal: Recursos de tu interés</h1>
         </div>
 
-        {showingDefaultRecommendations ? (
-          <p className="search-summary">
-            Mostrando <strong>{DEFAULT_TOP_N} recomendaciones</strong> basadas
-            en <strong> {DEFAULT_SEED_BOOK_TITLE}</strong>.
-          </p>
-        ) : appliedQuery ? (
+        {searchMode && appliedQuery ? (
           <p className="search-summary">
             Resultados para: <strong>{appliedQuery}</strong>
           </p>
+        ) : !searchMode && user ? (
+          <p className="search-summary">
+            Recomendaciones generadas a partir de tus libros favoritos.
+          </p>
         ) : null}
 
-        <div className="book-grid">
-          {loading ? (
-            <div className="status-message">Cargando libros...</div>
-          ) : error ? (
-            <div className="status-message error">{error}</div>
-          ) : books.length > 0 ? (
-            books.map((book) => (
-              <BookCard
-                key={book.id}
-                book={book}
-                isFavorite={Boolean(favoriteBooks[book.id])}
-                onOpen={setSelectedBook}
-                onToggleFavorite={toggleFavorite}
-              />
-            ))
-          ) : (
-            <div className="no-results">
-              No se encontraron libros con los filtros actuales.
+        {loading ? (
+          <div className="status-message">Cargando libros...</div>
+        ) : error ? (
+          <div className="status-message error">{error}</div>
+        ) : searchMode ? (
+          <div className="book-grid">
+            {books.length > 0 ? (
+              books.map((book) => (
+                <BookCard
+                  key={book.id}
+                  book={book}
+                  isFavorite={Boolean(favoriteBooks[book.id])}
+                  onOpen={setSelectedBook}
+                  onToggleFavorite={toggleFavorite}
+                />
+              ))
+            ) : (
+              <div className="no-results">
+                No se encontraron libros con los filtros actuales.
+              </div>
+            )}
+          </div>
+        ) : recommendationGroups.length > 0 ? (
+          <>
+            <div className="home-recommendations-slider">
+              {recommendationGroups.map((group) => (
+                <section
+                  key={group.seedBook.id}
+                  className="home-recommendation-page"
+                >
+                  <div className="home-recommendation-header">
+                    <span>Basado en tu favorito</span>
+                    <h2>{group.seedBook.title}</h2>
+                  </div>
+
+                  <div className="home-recommendation-grid">
+                    {group.recommendations.map((book) => (
+                      <BookCard
+                        key={`${group.seedBook.id}-${book.id}`}
+                        book={book}
+                        isFavorite={Boolean(favoriteBooks[book.id])}
+                        onOpen={setSelectedBook}
+                        onToggleFavorite={toggleFavorite}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
-          )}
-        </div>
+
+            {recommendationGroups.length > 1 ? (
+              <p className="home-scroll-hint">
+                Desliza horizontalmente para ver recomendaciones basadas en tus
+                otros favoritos.
+              </p>
+            ) : null}
+          </>
+        ) : user ? (
+          <div className="no-results">
+            Aún no tienes favoritos para generar recomendaciones. Selecciona
+            libros desde el onboarding o marca libros con el corazón.
+          </div>
+        ) : (
+          <div className="no-results">
+            Inicia sesión para ver recomendaciones personalizadas basadas en tus
+            favoritos.
+          </div>
+        )}
       </main>
 
       <BookDetailModal
@@ -285,9 +483,7 @@ export default function HomePage() {
           selectedBook ? Boolean(favoriteBooks[selectedBook.id]) : false
         }
         isLiked={
-          selectedBook
-            ? Boolean(likedRecommendations[selectedBook.id])
-            : false
+          selectedBook ? Boolean(likedRecommendations[selectedBook.id]) : false
         }
         onClose={() => setSelectedBook(null)}
         onToggleFavorite={toggleFavorite}

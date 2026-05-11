@@ -1,7 +1,12 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+
+import { useAuth } from "@/context/AuthContext";
+import { logoutUser } from "@/lib/auth";
+import { getUserProfile } from "@/lib/userStore";
 
 interface SearchBarProps {
   filtersOpen: boolean;
@@ -22,6 +27,12 @@ interface SearchBarProps {
   onClearFilters: () => void;
 }
 
+type BasicProfile = {
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
 export default function SearchBar({
   filtersOpen,
   searchInput,
@@ -40,6 +51,99 @@ export default function SearchBar({
   onSubmit,
   onClearFilters,
 }: SearchBarProps) {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProfile() {
+      if (!user) {
+        setProfileName("");
+        return;
+      }
+
+      try {
+        const profile = (await getUserProfile(user.uid)) as BasicProfile | null;
+
+        if (!active) return;
+
+        const firestoreName =
+          profile?.fullName?.trim() ||
+          `${profile?.firstName ?? ""} ${profile?.lastName ?? ""}`.trim();
+
+        const firebaseName = user.displayName?.trim() || "";
+        const emailName = user.email?.split("@")[0] ?? "";
+
+        setProfileName(firestoreName || firebaseName || emailName);
+      } catch (error) {
+        console.error(error);
+        if (!active) return;
+
+        const fallbackName =
+          user.displayName?.trim() || user.email?.split("@")[0] || "";
+        setProfileName(fallbackName);
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!menuRef.current) return;
+
+      if (!menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const displayName = useMemo(() => {
+    if (loading) return "Cargando...";
+    if (!user) return "Inicia sesión!";
+    return profileName || "Usuario";
+  }, [loading, user, profileName]);
+
+  const handleUserClick = () => {
+    if (loading) return;
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    setMenuOpen((prev) => !prev);
+  };
+
+  const handleGoToFavorites = () => {
+    setMenuOpen(false);
+    router.push("/favoritos");
+  };
+
+  const handleLogout = async () => {
+    try {
+      setMenuOpen(false);
+      await logoutUser();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   return (
     <nav className="navbar">
       <a href="/" className="nav-logo" aria-label="BookMatch">
@@ -174,9 +278,37 @@ export default function SearchBar({
         </form>
       </div>
 
-      <div className="user-section">
-        <Image src="/user.png" alt="Usuario" width={48} height={48} />
-        <span>Nombre del Usuario</span>
+      <div className="user-menu-wrapper" ref={menuRef}>
+        <button
+          type="button"
+          className="user-section user-section-btn"
+          onClick={handleUserClick}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          <Image src="/user.png" alt="Usuario" width={48} height={48} />
+          <span>{displayName}</span>
+        </button>
+
+        {user && menuOpen && (
+          <div className="user-dropdown" role="menu">
+            <button
+              type="button"
+              className="user-dropdown-item"
+              onClick={handleGoToFavorites}
+            >
+              Favoritos
+            </button>
+
+            <button
+              type="button"
+              className="user-dropdown-item user-dropdown-item--danger"
+              onClick={handleLogout}
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

@@ -199,3 +199,64 @@ class CatalogService:
 
     def get_by_id(self, book_id: str):
         return self.books_by_id.get(book_id)
+    
+    def get_topics(self, limit: int = 40):
+        topic_stats: dict[str, dict] = {}
+
+        for book in self.books:
+            topic = safe_str(book.get("category"))
+
+            if not topic:
+                continue
+
+            normalized_topic = normalize_text(topic)
+
+            if normalized_topic in {"general", "sin categoria", "sin categoría", "nan"}:
+                continue
+
+            if topic not in topic_stats:
+                topic_stats[topic] = {
+                    "name": topic,
+                    "bookCount": 0,
+                    "totalCitations": 0,
+                }
+
+            topic_stats[topic]["bookCount"] += 1
+            topic_stats[topic]["totalCitations"] += int(book.get("citations", 0) or 0)
+
+        topics = sorted(
+            topic_stats.values(),
+            key=lambda item: (
+                -item["bookCount"],
+                -item["totalCitations"],
+                normalize_text(item["name"]),
+            ),
+        )
+
+        return topics[:limit]
+
+    def get_top_by_topics(self, topics: list[str], top_n: int = 72):
+        normalized_topics = {
+            normalize_text(topic)
+            for topic in topics
+            if normalize_text(topic)
+        }
+
+        if not normalized_topics:
+            return []
+
+        filtered_books = [
+            book
+            for book in self.books
+            if normalize_text(book.get("category", "")) in normalized_topics
+        ]
+
+        filtered_books.sort(
+            key=lambda book: (
+                -int(book.get("citations", 0) or 0),
+                -int(book.get("editorialCount", 0) or 0),
+                normalize_text(book.get("title", "")),
+            )
+        )
+
+        return filtered_books[:top_n]

@@ -9,7 +9,7 @@ interface BookCardProps {
   book: Book;
   isFavorite: boolean;
   onOpen: (book: Book) => void;
-  onToggleFavorite: (bookId: string) => void;
+  onToggleFavorite: (book: Book) => void | Promise<void>;
 }
 
 export default function BookCard({
@@ -46,7 +46,7 @@ export default function BookCard({
             className={`heart-btn ${isFavorite ? "liked" : ""}`}
             onClick={(event) => {
               event.stopPropagation();
-              onToggleFavorite(book.id);
+              onToggleFavorite(book);
             }}
             aria-label={
               isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"

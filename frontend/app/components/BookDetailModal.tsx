@@ -10,7 +10,7 @@ interface BookDetailModalProps {
   isFavorite: boolean;
   isLiked: boolean;
   onClose: () => void;
-  onToggleFavorite: (bookId: string) => void;
+  onToggleFavorite: (book: Book) => void | Promise<void>;
   onToggleLiked: (bookId: string) => void;
 }
 
@@ -63,7 +63,7 @@ export default function BookDetailModal({
           <button
             type="button"
             className={`modal-icon-btn ${isFavorite ? "liked" : ""}`}
-            onClick={() => onToggleFavorite(book.id)}
+            onClick={() => onToggleFavorite(book)}
             aria-label={
               isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"
             }

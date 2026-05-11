@@ -2,9 +2,12 @@
 
 import { FormEvent, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { registerWithEmail } from "@/lib/auth";
-import { createUserProfile } from "@/lib/userStore";
+import { FirebaseError } from "firebase/app";
+
+import { registerOrContinueWithEmail } from "@/lib/auth";
+import { createUserProfile, savePreferences } from "@/lib/userStore";
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -18,16 +21,20 @@ export default function RegistroPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleRegister = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
 
-    if (!firstName.trim() || !lastName.trim()) {
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanFirstName || !cleanLastName) {
       setError("Completa nombre y apellidos.");
       return;
     }
 
-    if (!email.trim()) {
+    if (!cleanEmail) {
       setError("Completa el correo electrónico.");
       return;
     }
@@ -45,18 +52,54 @@ export default function RegistroPage() {
     try {
       setLoading(true);
 
-      const fullName = `${firstName} ${lastName}`.trim();
-      const user = await registerWithEmail(email.trim(), password, fullName);
+      const fullName = `${cleanFirstName} ${cleanLastName}`.trim();
+
+      const { user } = await registerOrContinueWithEmail(
+        cleanEmail,
+        password,
+        fullName
+      );
 
       await createUserProfile(user.uid, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: user.email ?? email.trim(),
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        email: user.email ?? cleanEmail,
       });
 
-      router.push("/onboarding/idiomas");
+      await savePreferences(user.uid, {
+        topics: [],
+        favoriteSeedBookIds: [],
+        onboardingCompleted: false,
+      });
+
+      router.replace("/onboarding/temas");
     } catch (err) {
       console.error(err);
+
+      if (err instanceof FirebaseError) {
+        if (err.code === "auth/email-already-in-use") {
+          setError("Ese correo ya está registrado. Inicia sesión o usa otro correo.");
+          return;
+        }
+
+        if (err.code === "auth/invalid-credential") {
+          setError(
+            "Ese correo ya existe y la contraseña no coincide. Inicia sesión o usa la contraseña correcta."
+          );
+          return;
+        }
+
+        if (err.code === "auth/weak-password") {
+          setError("La contraseña debe tener al menos 6 caracteres.");
+          return;
+        }
+
+        if (err.code === "auth/invalid-email") {
+          setError("El correo electrónico no es válido.");
+          return;
+        }
+      }
+
       setError("No fue posible crear la cuenta.");
     } finally {
       setLoading(false);
@@ -66,14 +109,9 @@ export default function RegistroPage() {
   return (
     <main className="auth-flow-page">
       <section className="auth-flow-card">
-        <button
-          type="button"
-          className="auth-flow-back"
-          onClick={() => router.push("/login")}
-          aria-label="Volver"
-        >
+        <Link href="/login" className="auth-flow-back" aria-label="Volver">
           ←
-        </button>
+        </Link>
 
         <div className="auth-flow-logo">
           <Image
@@ -87,7 +125,7 @@ export default function RegistroPage() {
         </div>
 
         <div className="auth-flow-content">
-          <h1 className="auth-flow-section-title">Formulario De Registro</h1>
+          <h1 className="auth-flow-section-title">Formulario de registro</h1>
 
           <form className="auth-form" onSubmit={handleRegister}>
             <div className="auth-form-grid-2">
@@ -100,7 +138,8 @@ export default function RegistroPage() {
                   className="auth-form-input"
                   type="text"
                   value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  autoComplete="given-name"
                 />
               </div>
 
@@ -113,20 +152,22 @@ export default function RegistroPage() {
                   className="auth-form-input"
                   type="text"
                   value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  onChange={(event) => setLastName(event.target.value)}
+                  autoComplete="family-name"
                 />
               </div>
 
               <div className="auth-form-field auth-form-field--full">
                 <label htmlFor="email" className="auth-form-label">
-                  Correo Electronico
+                  Correo electrónico
                 </label>
                 <input
                   id="email"
                   className="auth-form-input"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
                 />
               </div>
 
@@ -139,30 +180,35 @@ export default function RegistroPage() {
                   className="auth-form-input"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="new-password"
                 />
               </div>
 
               <div className="auth-form-field auth-form-field--full">
                 <label htmlFor="confirmPassword" className="auth-form-label">
-                  Contraseña
+                  Confirmar contraseña
                 </label>
                 <input
                   id="confirmPassword"
                   className="auth-form-input"
                   type="password"
-                  placeholder="Repita la contraseña"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
                 />
               </div>
             </div>
 
             {error ? <p className="auth-form-error">{error}</p> : null}
 
-            <div className="auth-actions">
-              <button type="submit" className="auth-primary-btn" disabled={loading}>
-                {loading ? "Cargando..." : "Registrarse"}
+            <div className="auth-submit-block">
+              <button
+                type="submit"
+                className="auth-primary-btn"
+                disabled={loading}
+              >
+                {loading ? "Creando..." : "Registrarse"}
               </button>
             </div>
           </form>

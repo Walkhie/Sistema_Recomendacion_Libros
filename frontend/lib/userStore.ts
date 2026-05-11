@@ -27,7 +27,7 @@ export type UserPreferences = PreferencesInput & {
   updatedAt?: unknown;
 };
 
-type BookSummary = {
+export type BookSummary = {
   id: string;
   title: string;
   edition?: string;
@@ -49,6 +49,51 @@ export type FavoriteBook = BookSummary & {
   bookId: string;
   savedAt?: unknown;
 };
+
+export type RecommendationReaction = "like" | "dislike";
+
+export type RecommendationFeedback = {
+  id: string;
+  bookId: string;
+  sourceBookId: string;
+  reaction: RecommendationReaction;
+  recommendedBook: BookSummary;
+  sourceBook: BookSummary;
+  updatedAt?: unknown;
+};
+
+type RecommendationReactionInput = {
+  book: BookSummary;
+  sourceBook: BookSummary;
+  reaction: RecommendationReaction;
+};
+
+function normalizeBookSummary(
+  book: Partial<BookSummary>,
+  fallback?: Partial<BookSummary>
+): BookSummary {
+  return {
+    id: book.id ?? fallback?.id ?? "",
+    title: book.title ?? fallback?.title ?? "Libro sin título",
+    edition: book.edition ?? fallback?.edition ?? "",
+    authors: book.authors ?? fallback?.authors ?? "",
+    category: book.category ?? fallback?.category ?? "",
+    year: book.year ?? fallback?.year ?? book.edition ?? fallback?.edition ?? "",
+    citations: book.citations ?? fallback?.citations ?? 0,
+    editorialCount: book.editorialCount ?? fallback?.editorialCount ?? 0,
+    editorialArea: book.editorialArea ?? fallback?.editorialArea ?? "",
+    editorial: book.editorial ?? fallback?.editorial ?? "",
+    doi: book.doi ?? fallback?.doi ?? "",
+    abstract: book.abstract ?? fallback?.abstract ?? "",
+    keywords: book.keywords ?? fallback?.keywords ?? "",
+    language: book.language ?? fallback?.language ?? "",
+    institution: book.institution ?? fallback?.institution ?? "",
+  };
+}
+
+function makeRecommendationFeedbackId(sourceBookId: string, bookId: string) {
+  return `${encodeURIComponent(sourceBookId)}__${encodeURIComponent(bookId)}`;
+}
 
 export async function createUserProfile(uid: string, data: UserProfileInput) {
   await setDoc(
@@ -84,22 +129,11 @@ export async function getPreferences(
 }
 
 export async function saveFavorite(uid: string, book: BookSummary) {
-  await setDoc(doc(db, "users", uid, "favorites", book.id), {
-    bookId: book.id,
-    title: book.title,
-    edition: book.edition ?? "",
-    authors: book.authors ?? "",
-    category: book.category ?? "",
-    year: book.year ?? book.edition ?? "",
-    citations: book.citations ?? 0,
-    editorialCount: book.editorialCount ?? 0,
-    editorialArea: book.editorialArea ?? "",
-    editorial: book.editorial ?? "",
-    doi: book.doi ?? "",
-    abstract: book.abstract ?? "",
-    keywords: book.keywords ?? "",
-    language: book.language ?? "",
-    institution: book.institution ?? "",
+  const normalizedBook = normalizeBookSummary(book);
+
+  await setDoc(doc(db, "users", uid, "favorites", normalizedBook.id), {
+    ...normalizedBook,
+    bookId: normalizedBook.id,
     savedAt: serverTimestamp(),
   });
 }
@@ -113,24 +147,14 @@ export async function getUserFavorites(uid: string): Promise<FavoriteBook[]> {
 
   return snap.docs.map((favoriteDoc) => {
     const data = favoriteDoc.data() as Partial<FavoriteBook>;
+    const normalizedBook = normalizeBookSummary(data, {
+      id: data.bookId ?? favoriteDoc.id,
+    });
 
     return {
+      ...normalizedBook,
       id: favoriteDoc.id,
       bookId: data.bookId ?? favoriteDoc.id,
-      title: data.title ?? "Libro sin título",
-      edition: data.edition ?? data.year ?? "",
-      authors: data.authors ?? "",
-      category: data.category ?? "",
-      year: data.year ?? data.edition ?? "",
-      citations: data.citations ?? 0,
-      editorialCount: data.editorialCount ?? 0,
-      editorialArea: data.editorialArea ?? "",
-      editorial: data.editorial ?? "",
-      doi: data.doi ?? "",
-      abstract: data.abstract ?? "",
-      keywords: data.keywords ?? "",
-      language: data.language ?? "",
-      institution: data.institution ?? "",
       savedAt: data.savedAt,
     };
   });
@@ -138,14 +162,29 @@ export async function getUserFavorites(uid: string): Promise<FavoriteBook[]> {
 
 export async function setRecommendationReaction(
   uid: string,
-  bookId: string,
-  reaction: "like" | "dislike"
+  input: RecommendationReactionInput
 ) {
+  const recommendedBook = normalizeBookSummary(input.book);
+  const sourceBook = normalizeBookSummary(input.sourceBook);
+
+  if (!recommendedBook.id || !sourceBook.id) {
+    throw new Error("No se pudo guardar la reacción: falta el libro recomendado o el libro origen.");
+  }
+
   await setDoc(
-    doc(db, "users", uid, "recommendation_feedback", bookId),
+    doc(
+      db,
+      "users",
+      uid,
+      "recommendation_feedback",
+      makeRecommendationFeedbackId(sourceBook.id, recommendedBook.id)
+    ),
     {
-      bookId,
-      reaction,
+      bookId: recommendedBook.id,
+      sourceBookId: sourceBook.id,
+      reaction: input.reaction,
+      recommendedBook,
+      sourceBook,
       source: "detail_modal",
       updatedAt: serverTimestamp(),
     },
@@ -153,8 +192,67 @@ export async function setRecommendationReaction(
   );
 }
 
-export async function clearRecommendationReaction(uid: string, bookId: string) {
-  await deleteDoc(doc(db, "users", uid, "recommendation_feedback", bookId));
+export async function clearRecommendationReaction(
+  uid: string,
+  sourceBookId: string,
+  bookId: string
+) {
+  await deleteDoc(
+    doc(
+      db,
+      "users",
+      uid,
+      "recommendation_feedback",
+      makeRecommendationFeedbackId(sourceBookId, bookId)
+    )
+  );
+}
+
+export async function getUserRecommendationFeedback(
+  uid: string
+): Promise<RecommendationFeedback[]> {
+  const snap = await getDocs(
+    collection(db, "users", uid, "recommendation_feedback")
+  );
+
+  return snap.docs.map((feedbackDoc) => {
+    const data = feedbackDoc.data() as {
+      bookId?: string;
+      sourceBookId?: string;
+      reaction?: RecommendationReaction;
+      recommendedBook?: Partial<BookSummary>;
+      book?: Partial<BookSummary>;
+      sourceBook?: Partial<BookSummary>;
+      updatedAt?: unknown;
+    };
+
+    const bookId =
+      data.bookId ??
+      data.recommendedBook?.id ??
+      data.book?.id ??
+      "";
+
+    const sourceBookId =
+      data.sourceBookId ??
+      data.sourceBook?.id ??
+      "";
+
+    return {
+      id: feedbackDoc.id,
+      bookId,
+      sourceBookId,
+      reaction: data.reaction === "dislike" ? "dislike" : "like",
+      recommendedBook: normalizeBookSummary(
+        data.recommendedBook ?? data.book ?? {},
+        { id: bookId }
+      ),
+      sourceBook: normalizeBookSummary(data.sourceBook ?? {}, {
+        id: sourceBookId,
+        title: "Libro base no disponible",
+      }),
+      updatedAt: data.updatedAt,
+    };
+  });
 }
 
 export async function getUserProfile(uid: string) {

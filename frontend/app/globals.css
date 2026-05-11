@@ -1606,3 +1606,26 @@ select {
     margin-bottom: 12px;
   }
 }
+
+/* ===== Ajustes finales modal recomendaciones ===== */
+
+.book-modal__favorite-btn {
+  width: 30px;
+  height: 30px;
+  padding: 4px;
+}
+
+.book-modal__feedback {
+  flex-wrap: wrap;
+}
+
+.book-modal__feedback-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-icon-btn.liked,
+.modal-icon-btn.disliked {
+  animation: pop 0.25s ease;
+}

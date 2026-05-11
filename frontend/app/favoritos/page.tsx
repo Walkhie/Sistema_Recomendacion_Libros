@@ -68,9 +68,6 @@ export default function FavoritesPage() {
   const [favoriteBooks, setFavoriteBooks] = useState<Record<string, boolean>>(
     {}
   );
-  const [likedRecommendations, setLikedRecommendations] = useState<
-    Record<string, boolean>
-  >({});
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
@@ -210,6 +207,7 @@ export default function FavoritesPage() {
 
       const matchesTitle = !title || bookTitle.includes(title);
       const matchesAuthor = !author || bookAuthors.includes(author);
+
       const matchesCategory =
         !category ||
         bookCategory.includes(category) ||
@@ -284,14 +282,26 @@ export default function FavoritesPage() {
     } catch (err) {
       console.error(err);
       setError("No se pudo actualizar el favorito. Intenta nuevamente.");
-    }
-  };
 
-  const toggleLikedRecommendation = (bookId: string) => {
-    setLikedRecommendations((prev) => ({
-      ...prev,
-      [bookId]: !prev[bookId],
-    }));
+      setFavoriteBooks((prev) => {
+        const next = { ...prev };
+
+        if (wasFavorite) {
+          next[book.id] = true;
+        } else {
+          delete next[book.id];
+        }
+
+        return next;
+      });
+
+      if (wasFavorite) {
+        setBooks((prev) => {
+          const exists = prev.some((item) => item.id === book.id);
+          return exists ? prev : [...prev, book];
+        });
+      }
+    }
   };
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -317,6 +327,7 @@ export default function FavoritesPage() {
     setCategoryFilter("");
     setMinCitations(0);
     setMinEditorialCount(0);
+
     setActiveFilters({
       query: "",
       title: "",
@@ -325,6 +336,7 @@ export default function FavoritesPage() {
       minCitations: 0,
       minEditorialCount: 0,
     });
+
     setFiltersOpen(false);
     setSelectedBook(null);
   };
@@ -395,14 +407,11 @@ export default function FavoritesPage() {
         isFavorite={
           selectedBook ? Boolean(favoriteBooks[selectedBook.id]) : false
         }
-        isLiked={
-          selectedBook
-            ? Boolean(likedRecommendations[selectedBook.id])
-            : false
-        }
+        isLiked={false}
+        isDisliked={false}
         onClose={() => setSelectedBook(null)}
         onToggleFavorite={toggleFavorite}
-        onToggleLiked={toggleLikedRecommendation}
+        onToggleReaction={() => {}}
       />
     </div>
   );

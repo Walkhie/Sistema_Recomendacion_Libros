@@ -1,17 +1,24 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import Image from "next/image";
 
 import type { Book } from "../types/book";
+import type { RecommendationReaction } from "@/lib/userStore";
 
 interface BookDetailModalProps {
   book: Book | null;
+  sourceBook?: Book | null;
   isOpen: boolean;
   isFavorite: boolean;
   isLiked: boolean;
+  isDisliked: boolean;
   onClose: () => void;
   onToggleFavorite: (book: Book) => void | Promise<void>;
-  onToggleLiked: (bookId: string) => void;
+  onToggleReaction: (
+    book: Book,
+    reaction: RecommendationReaction
+  ) => void | Promise<void>;
 }
 
 function formatValue(value?: string | number) {
@@ -23,12 +30,14 @@ function formatValue(value?: string | number) {
 
 export default function BookDetailModal({
   book,
+  sourceBook,
   isOpen,
   isFavorite,
   isLiked,
+  isDisliked,
   onClose,
   onToggleFavorite,
-  onToggleLiked,
+  onToggleReaction,
 }: BookDetailModalProps) {
   if (!isOpen || !book) return null;
 
@@ -39,13 +48,20 @@ export default function BookDetailModal({
   const language = formatValue(book.language);
   const editorial = formatValue(book.editorial || book.editorialArea);
   const year = formatValue(book.year || book.edition);
+  const showFeedback = Boolean(sourceBook);
 
   const isDoiUrl =
     typeof book.doi === "string" &&
     (book.doi.startsWith("http://") || book.doi.startsWith("https://"));
 
+  const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={handleOverlayClick}>
       <div
         className="book-modal"
         role="dialog"
@@ -62,16 +78,18 @@ export default function BookDetailModal({
 
           <button
             type="button"
-            className={`modal-icon-btn ${isFavorite ? "liked" : ""}`}
+            className={`heart-btn book-modal__favorite-btn ${
+              isFavorite ? "liked" : ""
+            }`}
             onClick={() => onToggleFavorite(book)}
             aria-label={
               isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"
             }
           >
             {isFavorite ? (
-              <Image src="/favorite.png" alt="Favored" width={28} height={28} />
+              <Image src="/favorite.png" alt="Favored" width={22} height={22} />
             ) : (
-              <Image src="/heart.png" alt="Favorite" width={28} height={28} />
+              <Image src="/heart.png" alt="Favorite" width={22} height={22} />
             )}
           </button>
         </div>
@@ -140,28 +158,59 @@ export default function BookDetailModal({
           <p className="book-modal__text">{keywords}</p>
         </div>
 
-        <div className="book-modal__feedback">
-          <span className="book-modal__feedback-text">
-            ¿Quedó satisfecho con la recomendación?
-          </span>
+        {showFeedback ? (
+          <div className="book-modal__feedback">
+            <span className="book-modal__feedback-text">
+              ¿Te sirvió esta recomendación?
+            </span>
 
-          <button
-            type="button"
-            className={`modal-icon-btn ${isLiked ? "liked" : ""}`}
-            onClick={() => onToggleLiked(book.id)}
-            aria-label={
-              isLiked
-                ? "Quitar calificación positiva"
-                : "Calificar recomendación positivamente"
-            }
-          >
-            {isLiked ? (
-              <Image src="/liked.png" alt="Liked" width={30} height={30} />
-            ) : (
-              <Image src="/like.png" alt="Like" width={30} height={30} />
-            )}
-          </button>
-        </div>
+            <div className="book-modal__feedback-actions">
+              <button
+                type="button"
+                className={`modal-icon-btn ${isLiked ? "liked" : ""}`}
+                onClick={() => onToggleReaction(book, "like")}
+                aria-label={
+                  isLiked
+                    ? "Quitar like de la recomendación"
+                    : "Dar like a la recomendación"
+                }
+              >
+                {isLiked ? (
+                  <Image src="/liked.png" alt="Liked" width={30} height={30} />
+                ) : (
+                  <Image src="/like.png" alt="Like" width={30} height={30} />
+                )}
+              </button>
+
+              <button
+                type="button"
+                className={`modal-icon-btn ${isDisliked ? "liked" : ""}`}
+                onClick={() => onToggleReaction(book, "dislike")}
+                aria-label={
+                  isDisliked
+                    ? "Quitar dislike de la recomendación"
+                    : "Dar dislike a la recomendación"
+                }
+              >
+                {isDisliked ? (
+                  <Image
+                    src="/disliked.png"
+                    alt="Disliked"
+                    width={30}
+                    height={30}
+                  />
+                ) : (
+                  <Image
+                    src="/dislike.png"
+                    alt="Dislike"
+                    width={30}
+                    height={30}
+                  />
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="book-modal__actions">
           <button

@@ -1,43 +1,87 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+
 import { savePreferences } from "@/lib/userStore";
 import { useAuth } from "@/context/AuthContext";
 
-const TOPICS = [
-  "arte",
-  "historia",
-  "cálculo",
-  "programación",
-  "química",
-  "física",
-  "música",
-  "filosofía",
-  "economía",
-  "biología",
-  "ciencias sociales",
-  "medicina",
-];
+const API_URL = "http://127.0.0.1:8000";
+
+type TopicOption = {
+  name: string;
+  bookCount: number;
+  totalCitations: number;
+};
 
 export default function TemasPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
-  const [topics, setTopics] = useState<string[]>([
-    "cálculo",
-    "programación",
-    "química",
-  ]);
+  const [availableTopics, setAvailableTopics] = useState<TopicOption[]>([]);
+  const [topics, setTopics] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingTopics, setLoadingTopics] = useState(true);
 
   const displayName = useMemo(() => {
     if (user?.displayName?.trim()) return user.displayName;
     if (user?.email) return user.email.split("@")[0];
     return "Nombre del Usuario";
   }, [user]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTopics() {
+      if (authLoading) return;
+
+      if (!user) {
+        setLoadingTopics(false);
+        return;
+      }
+
+      try {
+        setLoadingTopics(true);
+        setError("");
+
+        const response = await fetch(`${API_URL}/books/topics?limit=40`);
+
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar los temas.");
+        }
+
+        const data: TopicOption[] = await response.json();
+
+        if (!active) return;
+
+        setAvailableTopics(data);
+      } catch (err) {
+        console.error(err);
+
+        if (active) {
+          setError("No se pudieron cargar los temas desde el catálogo.");
+        }
+      } finally {
+        if (active) {
+          setLoadingTopics(false);
+        }
+      }
+    }
+
+    loadTopics();
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user]);
 
   const toggleTopic = (topic: string) => {
     setTopics((prev) =>
@@ -49,7 +93,7 @@ export default function TemasPage() {
 
   const handleSubmit = async () => {
     if (!user) {
-      setError("Debes iniciar sesión.");
+      router.replace("/login");
       return;
     }
 
@@ -64,10 +108,10 @@ export default function TemasPage() {
 
       await savePreferences(user.uid, {
         topics,
-        onboardingCompleted: true,
+        onboardingCompleted: false,
       });
 
-      router.push("/");
+      router.replace("/onboarding/libros");
     } catch (err) {
       console.error(err);
       setError("No se pudieron guardar los temas.");
@@ -76,7 +120,7 @@ export default function TemasPage() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loadingTopics || !user) {
     return <main className="auth-flow-page">Cargando...</main>;
   }
 
@@ -86,7 +130,7 @@ export default function TemasPage() {
         <button
           type="button"
           className="auth-flow-back"
-          onClick={() => router.push("/onboarding/idiomas")}
+          onClick={() => router.push("/registro")}
           aria-label="Volver"
         >
           ←
@@ -103,7 +147,7 @@ export default function TemasPage() {
           />
         </div>
 
-        <div className="auth-flow-content">
+        <div className="auth-flow-content auth-flow-content--topics">
           <div className="auth-flow-user">
             <span className="auth-flow-user-icon">
               <Image src="/user.png" alt="Usuario" width={24} height={24} />
@@ -116,26 +160,37 @@ export default function TemasPage() {
           </h1>
 
           <p className="auth-flow-section-copy">
-            Esto nos ayuda a recomendarte libros que traten de tus temas favoritos.
-            <strong> Podrás cambiar esta configuración en cualquier momento.</strong>
+            Selecciona los temas que más se ajusten a tus intereses académicos.
+            Estos temas vienen directamente del catálogo de libros.
+            <strong>
+              {" "}
+              Luego te mostraremos los libros mejor posicionados por citaciones.
+            </strong>
           </p>
 
           <div className="topic-grid">
-            {TOPICS.map((topic) => {
-              const active = topics.includes(topic);
+            {availableTopics.map((topic) => {
+              const active = topics.includes(topic.name);
 
               return (
                 <button
-                  key={topic}
+                  key={topic.name}
                   type="button"
                   className={`topic-chip ${active ? "topic-chip--active" : ""}`}
-                  onClick={() => toggleTopic(topic)}
+                  onClick={() => toggleTopic(topic.name)}
+                  title={`${topic.bookCount} libros · ${topic.totalCitations} citaciones`}
                 >
-                  {topic}
+                  {topic.name}
                 </button>
               );
             })}
           </div>
+
+          {availableTopics.length === 0 && !error ? (
+            <p className="auth-form-error">
+              No se encontraron temas disponibles en el catálogo.
+            </p>
+          ) : null}
 
           {error ? <p className="auth-form-error">{error}</p> : null}
 
@@ -146,7 +201,7 @@ export default function TemasPage() {
               onClick={handleSubmit}
               disabled={saving}
             >
-              {saving ? "Guardando..." : "Enviar preferencias"}
+              {saving ? "Guardando..." : "Continuar"}
             </button>
           </div>
         </div>

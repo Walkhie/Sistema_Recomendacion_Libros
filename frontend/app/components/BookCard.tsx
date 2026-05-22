@@ -25,6 +25,10 @@ export default function BookCard({
     }
   };
 
+  const displayYear = book.year || book.edition || "Sin año";
+  const displayAuthors = book.authors || "Autor desconocido";
+  const displayCategory = book.category || "General";
+
   return (
     <article
       className="book-card book-card--interactive"
@@ -62,15 +66,15 @@ export default function BookCard({
         </div>
 
         <div className="card-meta">
-          <p className="card-edition">{book.edition}</p>
-
-          <span className="category-pill" title={book.category}>
-            {book.category}
-          </span>
-
-          <p className="card-authors" title={book.authors}>
-            {book.authors}
+          <p className="card-authors" title={displayAuthors}>
+            {displayAuthors}
           </p>
+
+          <p className="card-edition">{displayYear}</p>
+
+          <span className="category-pill" title={displayCategory}>
+            {displayCategory}
+          </span>
         </div>
       </div>
 

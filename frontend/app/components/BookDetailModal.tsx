@@ -43,11 +43,12 @@ export default function BookDetailModal({
 
   const doi = formatValue(book.doi);
   const abstract = formatValue(book.abstract);
-  const keywords = formatValue(book.keywords);
   const institution = formatValue(book.institution);
   const language = formatValue(book.language);
   const editorial = formatValue(book.editorial || book.editorialArea);
   const year = formatValue(book.year || book.edition);
+  const authors = formatValue(book.authors);
+  const category = formatValue(book.category);
   const showFeedback = Boolean(sourceBook);
 
   const isDoiUrl =
@@ -73,7 +74,14 @@ export default function BookDetailModal({
             <h2 id="book-modal-title" className="book-modal__title">
               {book.title}
             </h2>
+
+            <p className="book-modal__authors">{authors}</p>
+
             <p className="book-modal__edition">{year}</p>
+
+            <span className="category-pill" title={category}>
+              {category}
+            </span>
           </div>
 
           <button
@@ -92,13 +100,6 @@ export default function BookDetailModal({
               <Image src="/heart.png" alt="Favorite" width={22} height={22} />
             )}
           </button>
-        </div>
-
-        <div className="book-modal__meta">
-          <span className="category-pill" title={book.category}>
-            {book.category}
-          </span>
-          <p className="book-modal__authors">{book.authors}</p>
         </div>
 
         <div className="book-modal__grid">
@@ -153,11 +154,6 @@ export default function BookDetailModal({
           <p className="book-modal__text">{abstract}</p>
         </div>
 
-        <div className="book-modal__section">
-          <h3 className="book-modal__section-title">Palabras clave</h3>
-          <p className="book-modal__text">{keywords}</p>
-        </div>
-
         {showFeedback ? (
           <div className="book-modal__feedback">
             <span className="book-modal__feedback-text">
@@ -184,7 +180,7 @@ export default function BookDetailModal({
 
               <button
                 type="button"
-                className={`modal-icon-btn ${isDisliked ? "liked" : ""}`}
+                className={`modal-icon-btn ${isDisliked ? "disliked" : ""}`}
                 onClick={() => onToggleReaction(book, "dislike")}
                 aria-label={
                   isDisliked

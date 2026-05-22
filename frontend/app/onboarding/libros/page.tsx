@@ -4,17 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-import {
-  getPreferences,
-  saveFavorite,
-  savePreferences,
-} from "@/lib/userStore";
+import { getPreferences, savePreferences } from "@/lib/userStore";
 import { useAuth } from "@/context/AuthContext";
 import type { Book } from "@/app/types/book";
 
 const API_URL = "http://127.0.0.1:8000";
 const TOP_N_BOOKS = 72;
-const BOOKS_PER_PAGE = 6;
+const BOOKS_PER_PAGE = 36;
 
 function normalizeText(value?: string | number) {
   return String(value ?? "")
@@ -32,26 +28,6 @@ function chunkBooks(books: Book[], size: number) {
   }
 
   return chunks;
-}
-
-function bookToFavoritePayload(book: Book) {
-  return {
-    id: book.id,
-    title: book.title,
-    edition: book.edition,
-    authors: book.authors,
-    category: book.category,
-    year: book.year || book.edition,
-    citations: book.citations,
-    editorialCount: book.editorialCount,
-    editorialArea: book.editorialArea,
-    editorial: book.editorial,
-    doi: book.doi,
-    abstract: book.abstract,
-    keywords: book.keywords,
-    language: book.language,
-    institution: book.institution,
-  };
 }
 
 export default function OnboardingLibrosPage() {
@@ -177,16 +153,6 @@ export default function OnboardingLibrosPage() {
       setSaving(true);
       setError("");
 
-      const selectedBooks = books.filter((book) =>
-        selectedBookIds.includes(book.id)
-      );
-
-      await Promise.all(
-        selectedBooks.map((book) =>
-          saveFavorite(user.uid, bookToFavoritePayload(book))
-        )
-      );
-
       await savePreferences(user.uid, {
         favoriteSeedBookIds: selectedBookIds,
         onboardingCompleted: true,
@@ -280,19 +246,18 @@ export default function OnboardingLibrosPage() {
                             {book.title}
                           </h2>
 
+                          <p className="onboarding-book-card__authors">
+                            {book.authors || "Autor desconocido"}
+                          </p>
+
                           <p className="onboarding-book-card__year">
-                            {book.edition || book.year || "Sin año"}
+                            {book.year || book.edition || "Sin año"}
                           </p>
 
                           <span className="onboarding-book-card__category">
                             {book.category || "General"}
                           </span>
-
-                          <p className="onboarding-book-card__authors">
-                            {book.authors || "Autor desconocido"}
-                          </p>
                         </div>
-
                         <div className="onboarding-book-card__footer">
                           <p>
                             <strong>Citado por {book.citations ?? 0}</strong>
